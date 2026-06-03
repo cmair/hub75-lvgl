@@ -6,7 +6,10 @@
 
 #include "hardware/clocks.h"
 
-#include "libraries/hub75/include/hub75.hpp"
+#include "hub75.hpp"
+
+#include "lvgl.hpp"
+
 
 #if HUB75_MULTICORE == true
 #include "pico/multicore.h"
