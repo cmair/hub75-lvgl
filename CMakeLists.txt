@@ -107,6 +107,14 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 
+FetchContent_Declare(
+  lvgl
+  GIT_REPOSITORY https://github.com/lvgl/lvgl
+  GIT_TAG        release/v9.5
+)
+
+FetchContent_MakeAvailable(lvgl)
+
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
         pico_stdlib

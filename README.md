@@ -6,7 +6,9 @@ This repository uses git submodules.
 
 To add git submodules use:
 `git submodule add --branch hub75_library https://github.com/cmair/rp2350_hub75.git libraries/hub75`
-`git submodule add --branch release/v9.5 https://github.com/lvgl/lvgl.git libraries/lvgl`
 
 This is not necessary for this repository, as they are already set-up. Just update them after checkout:
 `git submodule update --init --recursive`
+
+
+LVGL is included via CMake `FetchContent` which will download and build the library automatically.
