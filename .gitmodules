@@ -2,7 +2,3 @@
 	path = libraries/hub75
 	url = https://github.com/cmair/rp2350_hub75.git
 	branch = cm/hub75_library
-[submodule "libraries/lvgl"]
-	path = libraries/lvgl
-	url = https://github.com/lvgl/lvgl.git
-	branch = release/v9.5
