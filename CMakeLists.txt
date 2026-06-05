@@ -61,6 +61,7 @@ pico_enable_stdio_usb(${PROJECT_NAME} 1)
 
 add_subdirectory(libraries)
 add_subdirectory(protos)
+add_subdirectory(util)
 
 # No need to modify preprocessor defines in hub75.cpp - instead set their values here.
 #

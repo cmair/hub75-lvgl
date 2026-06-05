@@ -42,3 +42,5 @@ build/
 *.swp
 
 __pycache__
+util/nanopb_pb2.py
+util/panel_pb2.py
