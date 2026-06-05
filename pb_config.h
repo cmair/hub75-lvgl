@@ -1,0 +1,3 @@
+#define PB_NO_FUNCTION_POINTERS 1
+#define PB_FIELD_32BIT 1
+#define PB_NO_MALLOC 1

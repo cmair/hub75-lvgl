@@ -17,6 +17,7 @@
 /// @brief Enum for selecting animation demos
 enum DemoIndex
 {
+    DEMO_AUTO = 0,
     DEMO_BOUNCE,
     DEMO_FIRE,
     DEMO_IMAGE,
@@ -37,6 +38,7 @@ ImageAnimation *imageAnimation;
 ColourCheck *colourCheck;
 
 struct repeating_timer timer;
+bool timer_running = false;
 
 
 //--------------------------------------------------------------------------------
@@ -227,11 +229,36 @@ void lvgl_init()
 
 
     add_repeating_timer_ms(15000, skip_to_next_demo, NULL, &timer);
+    timer_running = true;
 }
 
 
-void lvgl_animate()
+void lvgl_animate(int lvgl_demo)
 {
+    switch (lvgl_demo)
+    {
+        case -1:
+            // Stop LVGL Demo (and timer)
+            if (timer_running) {
+                cancel_repeating_timer(&timer);
+                timer_running = false;
+            }
+            return;
+        case 0:
+            // Start LVGL Demo (with autorotation)
+            if (!timer_running) {
+                add_repeating_timer_ms(15000, skip_to_next_demo, NULL, &timer);
+                timer_running = true;
+            }
+            break;
+        default:
+            if (lvgl_demo != frame_index) {
+                frame_index = lvgl_demo;
+                load_anim = true;
+            }
+        break;
+    }
+
     if (load_anim)
     {
         load_anim = false;

@@ -10,6 +10,9 @@
 
 #include "lvgl.hpp"
 
+#if defined(UDP_VIDEO_SERVER_PORT)
+#include "network.hpp"
+#endif
 
 #if HUB75_MULTICORE == true
 #include "pico/multicore.h"
@@ -26,6 +29,11 @@ void core1_entry()
 {
     create_hub75_driver(DISPLAY_WIDTH, DISPLAY_HEIGHT, PANEL_TYPE, INVERTED_STB);
     start_hub75_driver();
+
+    // Start network tasks on core 1 as well, so that they can run in parallel with the HUB75 driver
+#if defined(UDP_VIDEO_SERVER_PORT)
+    network_init();
+#endif
 
     // KEEP CORE 1 ALIVE — without this, Core 1's NVIC is torn down and DMA_IRQ_1 stops firing
     //
@@ -77,9 +85,14 @@ int main()
     float intensity = 0.25f;
     setIntensity(intensity);
 
+    int demo_selection = 1;
+
     while (true)
     {
-        lvgl_animate();
-        sleep_ms(ms); // hz updates per second - the HUB75 driver is running independently usually with far more than 200Hz (see README.md)
+        lvgl_animate(demo_selection);
+        #if defined(UDP_VIDEO_SERVER_PORT)
+        demo_selection = network_service();
+        #endif
+        sleep_ms(ms); // hz updates per second - the HUB75 driver is running independently
     }
 }

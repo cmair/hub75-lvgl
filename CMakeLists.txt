@@ -59,9 +59,8 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
 pico_enable_stdio_usb(${PROJECT_NAME} 1)
 
-add_subdirectory(
-    libraries
-)
+add_subdirectory(libraries)
+add_subdirectory(protos)
 
 # No need to modify preprocessor defines in hub75.cpp - instead set their values here.
 #
@@ -99,6 +98,37 @@ target_compile_definitions(hub75 PUBLIC
     FRAME_RATE=true            # for testing and debugging purpose only: output frame rate information (printf) in monitor - set to `false` for production
 )
 
+
+# Link wifi support if available and set wifi credentials from environment variables
+if(PICO_CYW43_SUPPORTED)
+
+    target_compile_definitions(${PROJECT_NAME} PUBLIC
+        CYW43_PIO_CLOCK_DIV_DYNAMIC=true
+        UDP_VIDEO_SERVER_PORT=5000
+    )
+
+    target_sources(${PROJECT_NAME} PRIVATE
+        src/network.cpp
+    )
+
+    target_link_libraries(${PROJECT_NAME}
+        proto
+        pico_cyw43_arch_lwip_threadsafe_background
+    )
+    if(DEFINED ENV{WIFI_SSID})
+        target_compile_definitions(${PROJECT_NAME} PRIVATE WIFI_SSID="$ENV{WIFI_SSID}")
+    else()
+        message(FATAL_ERROR "WIFI_SSID environment variable is not set!")
+    endif()
+    if(DEFINED ENV{WIFI_PWD})
+        target_compile_definitions(${PROJECT_NAME} PRIVATE WIFI_PWD="$ENV{WIFI_PWD}")
+    else()
+        message(FATAL_ERROR "WIFI_PWD environment variable is not set!")
+    endif()
+endif()
+
+
+
 target_sources(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src/lvgl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/examples/bouncing_balls.cpp
@@ -123,7 +153,7 @@ target_link_libraries(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src
         ${CMAKE_CURRENT_LIST_DIR}/examples
-#        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})

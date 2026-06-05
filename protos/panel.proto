@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+//package embedded_display;
+
+import "nanopb.proto";
+
+// Panel operating modes
+enum PanelMode {
+  PANEL_MODE_UNSPECIFIED        = 0;
+  PANEL_MODE_NETWORK            = 1;
+  PANEL_MODE_AUTO               = 2;
+  PANEL_MODE_BOUNCING_BALLS     = 3;
+  PANEL_MODE_FIRE_EFFECT        = 4;
+  PANEL_MODE_IMAGE_ANIMATION    = 5;
+  PANEL_MODE_IMAGE_COLOR_CHECK  = 6;
+}
+
+message PanelCommand {
+  oneof command {
+    SetBrightness set_brightness = 1;
+    SetMode set_mode = 2;
+    SetImage set_image = 3;
+  }
+}
+
+// Command: Set display brightness
+message SetBrightness {
+  float brightness = 1;
+}
+
+// Command: Set display mode
+message SetMode {
+  PanelMode mode = 1;
+}
+
+// Command: Set display image (raw bitmap data)
+message SetImage {
+  // Max 64KB image data - static allocation
+  bytes image_data = 1 [(nanopb).max_size = 65536];
+}
