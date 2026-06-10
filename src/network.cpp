@@ -170,7 +170,9 @@ int network_service()
         setIntensity(b);
     }
     if (image_pending.exchange(false)) {
-        update_bgr(pending_image);
+        if (demo < 0) {
+           update_bgr(pending_image);
+        }
     }
     if (demo_pending.exchange(false)) {
         demo = demo_selection.load();
