@@ -153,8 +153,8 @@ void network_init()
         // Register callback to be notified when DHCP assigns an IP
         netif_set_status_callback(&cyw43_state.netif[CYW43_ITF_STA], netif_status_callback);
 
-        printf("Connecting to %s:%s\n", WIFI_SSID, WIFI_PWD);
-        if (cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PWD, CYW43_AUTH_WPA3_WPA2_AES_PSK)) {
+        printf("Connecting to %s:%s\n", WIFI_SSID, WIFI_PASSWORD);
+        if (cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK)) {
             printf("WiFi failed to connect\n");
         } else {
             printf("WiFi is connecting...\n");
