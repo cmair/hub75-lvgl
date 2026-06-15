@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "network.hpp"
+#include "fota.hpp"
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "pico/cyw43_driver.h"
@@ -83,7 +84,8 @@ static void udp_recv_cb(void *arg, struct udp_pcb *upcb, struct pbuf *p, const i
     if (!p) return;
 
     size_t total = p->tot_len;
-    uint8_t *tmp = (uint8_t *)malloc(total);
+    // reserve a static buffer with enough space for the image data and some extra bytes for protobuf overhead
+    static uint8_t tmp[10 + TOTAL_PIXELS * 3];
     if (!tmp) {
         printf("udp_recv_cb: alloc failed for %u bytes\n", (unsigned)total);
         pbuf_free(p);
@@ -94,8 +96,6 @@ static void udp_recv_cb(void *arg, struct udp_pcb *upcb, struct pbuf *p, const i
     pbuf_free(p);
 
     process_panel_message(tmp, total);
-
-    free(tmp);
 }
 
 
@@ -133,7 +133,8 @@ static void netif_status_callback(struct netif *netif)
         const ip4_addr_t *ip = netif_ip4_addr(netif);
         printf("IP address acquired: %u.%u.%u.%u\n",
             ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
-        
+        fota_confirm();
+        fota_init_network();
         // Start network services once we have an IP
         start_udp_server();
     }

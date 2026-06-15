@@ -125,6 +125,7 @@ if(PICO_CYW43_SUPPORTED)
     )
 
     target_sources(${PROJECT_NAME} PRIVATE
+        src/fota.cpp
         src/network.cpp
     )
 

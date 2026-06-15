@@ -15,12 +15,14 @@
 
 #if defined(UDP_VIDEO_SERVER_PORT)
 #include "network.hpp"
+#include "fota.hpp"
 #endif
 
 #if HUB75_MULTICORE == true
 #include "pico/multicore.h"
 #endif
 
+#include "pico/bootrom.h"
 
 
 /**
@@ -30,8 +32,13 @@
  */
 void core1_entry()
 {
+    // Enable flash lockout possibilities for FOTA on each core!
+    flash_safe_execute_core_init();
+
+#if defined(HUB75_SUPPORT)
     create_hub75_driver(DISPLAY_WIDTH, DISPLAY_HEIGHT, PANEL_TYPE, INVERTED_STB);
     start_hub75_driver();
+#endif
 
     // Start network tasks on core 1 as well, so that they can run in parallel with the HUB75 driver
 #if defined(UDP_VIDEO_SERVER_PORT)
@@ -41,10 +48,11 @@ void core1_entry()
     // KEEP CORE 1 ALIVE — without this, Core 1's NVIC is torn down and DMA_IRQ_1 stops firing
     //
     // Add your additional tasks for core1 here
-    while (true)
+    while (!fota_is_complete())
     {
-        tight_loop_contents();
+        sleep_ms(10);
     }
+    fota_reboot();
 }
 
 
@@ -63,6 +71,9 @@ int main()
     }
     printf("USB connected!\n");
 
+    // Enable flash lockout possibilities for FOTA on each core!
+    flash_safe_execute_core_init();
+
 #if HUB75_MULTICORE == true
     // Run hub75 driver on core1
     multicore_reset_core1();             // Reset core 1
@@ -71,6 +82,10 @@ int main()
     // Run hub75 on core0 - the Hub75 driver is doing its job here
     create_hub75_driver(DISPLAY_WIDTH, DISPLAY_HEIGHT, PANEL_TYPE, INVERTED_STB);
     start_hub75_driver();
+#if defined(UDP_VIDEO_SERVER_PORT)
+    network_init();
+#endif
+
 #endif
 
 
