@@ -4,6 +4,9 @@
 # exclude build directory
 build/
 
+# directory with private key material
+keys/
+
 .cache/
 
 # Prerequisites

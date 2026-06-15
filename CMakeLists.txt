@@ -48,6 +48,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # Nothing here yet. See further below for more library settings.
 )
 
+# Set a signing key for firmware updates
+set(PRIVATE_SIGNING_KEY "${CMAKE_SOURCE_DIR}/keys/private.pem")
+
 set(HUB75_SUPPORT true) # Enable the HUB75 library
 set(LVGL_SUPPORT true)  # Enable LVGL support
 
@@ -118,6 +121,7 @@ if(PICO_CYW43_SUPPORTED)
     target_compile_definitions(${PROJECT_NAME} PUBLIC
         CYW43_PIO_CLOCK_DIV_DYNAMIC=true
         UDP_VIDEO_SERVER_PORT=5000
+        PICO_CRT0_IMAGE_TYPE_TBYB=1
     )
 
     target_sources(${PROJECT_NAME} PRIVATE
@@ -128,6 +132,9 @@ if(PICO_CYW43_SUPPORTED)
         proto
         pico_cyw43_arch_lwip_threadsafe_background
     )
+
+    pico_use_wifi_firmware_partition(${PROJECT_NAME})
+
     if(DEFINED ENV{WIFI_SSID})
         target_compile_definitions(${PROJECT_NAME} PRIVATE WIFI_SSID="$ENV{WIFI_SSID}")
     else()
@@ -176,5 +183,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/examples
         ${CMAKE_SOURCE_DIR}
 )
+
+pico_hash_binary(${PROJECT_NAME})
+if(EXISTS ${PRIVATE_SIGNING_KEY})
+    message(STATUS "Using key file ${PRIVATE_SIGNING_KEY} to sign the firmware image.")
+    pico_sign_binary(${PROJECT_NAME} ${PRIVATE_SIGNING_KEY})
+else()
+    message(STATUS "Missing private key file ${PRIVATE_SIGNING_KEY}. The firmware will NOT be signed.")
+endif()
 
 pico_add_extra_outputs(${PROJECT_NAME})

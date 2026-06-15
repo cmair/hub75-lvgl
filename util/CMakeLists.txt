@@ -39,3 +39,17 @@ add_custom_target(protobuf_python ALL
         "${PYTHON_OUT_DIR}/nanopb_pb2.py"
         "${PYTHON_OUT_DIR}/panel_pb2.py"
 )
+
+
+# Define path to partition definition files
+set(PARTITION_JSON "${CMAKE_CURRENT_SOURCE_DIR}/partitions.json")
+set(PARTITION_UF2  "${CMAKE_CURRENT_BINARY_DIR}/partitions.uf2")
+
+add_custom_command(
+    OUTPUT ${PARTITION_UF2}
+    COMMAND picotool partition create ${PARTITION_JSON} ${PARTITION_UF2}
+    DEPENDS ${PARTITION_JSON}
+    COMMENT "Creating partition table: partitions.uf2"
+)
+
+add_custom_target(generate_partitions ALL DEPENDS ${PARTITION_UF2})
