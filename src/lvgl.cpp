@@ -1,6 +1,12 @@
 #include "pico/multicore.h"
 
+#if defined(HUB75_SUPPORT)
 #include "hub75.hpp"
+#else
+#define HUB75_SCREEN_WIDTH 96
+#define HUB75_SCREEN_HEIGHT 64
+#endif
+
 #include "lvgl.h"
 
 #include "bouncing_balls.hpp"
@@ -26,7 +32,7 @@ enum DemoIndex
 
 static critical_section_t crit_sec = {0};                              ///< Synchronization for safe time reading
 static int frame_index = DEMO_BOUNCE;                                  ///< Current demo index
-static uint8_t buf1[DISPLAY_WIDTH * DISPLAY_HEIGHT * BYTES_PER_PIXEL]; ///< Drawing buffer for LVGL
+static uint8_t buf1[HUB75_SCREEN_WIDTH * HUB75_SCREEN_HEIGHT * BYTES_PER_PIXEL]; ///< Drawing buffer for LVGL
 
 static lv_display_t *display1; ///< LVGL display handle
 
@@ -90,7 +96,9 @@ uint32_t get_milliseconds_since_boot()
  */
 void flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t *px_map)
 {
+    #if defined(HUB75_SUPPORT)
     update_bgr(px_map);              ///< Transfer buffer to display driver
+    #endif
     lv_display_flush_ready(display); ///< Notify LVGL that flush is complete
 }
 
@@ -171,7 +179,7 @@ void update_demo(int index, BouncingBalls *bouncingBalls, FireEffect *fireEffect
         if (imageAnimation->animation_done())
         {
             imageAnimation->animation_init();
-            add_repeating_timer_ms(15000, skip_to_next_demo, NULL, &timer);
+            add_repeating_timer_ms(10000, skip_to_next_demo, NULL, &timer);
         }
         break;
     case DEMO_COLOUR:
@@ -192,7 +200,7 @@ void lvgl_init()
     lv_tick_set_cb(get_milliseconds_since_boot);
 
     // Create a display where screens and widgets can be added
-    lv_display_t * display = lv_display_create(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    lv_display_t * display = lv_display_create(HUB75_SCREEN_WIDTH, HUB75_SCREEN_HEIGHT);
     if (!display)
     {
         panic("Failed to create LVGL display\n");
@@ -200,7 +208,7 @@ void lvgl_init()
 
     // Add rendering buffers to the screen.
 //    lv_display_set_buffers(display, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_DIRECT);
-    lv_display_set_buffers_with_stride(display, buf1, NULL, sizeof(buf1), DISPLAY_WIDTH * BYTES_PER_PIXEL, LV_DISPLAY_RENDER_MODE_FULL);
+    lv_display_set_buffers_with_stride(display, buf1, NULL, sizeof(buf1), HUB75_SCREEN_WIDTH * BYTES_PER_PIXEL, LV_DISPLAY_RENDER_MODE_FULL);
 
     // Add a callback that can flush the content from `buf` when it has been rendered
     lv_display_set_flush_cb(display, flush_cb);
@@ -215,17 +223,17 @@ void lvgl_init()
     lv_qrcode_set_dark_color(qr, { 0xFF, 0xFF, 0xFF });
     lv_qrcode_set_light_color(qr, { 0x00, 0x00, 0x00 });
     lv_obj_center(qr);
-    lv_qrcode_set_size(qr, MIN(DISPLAY_HEIGHT, DISPLAY_WIDTH));
+    lv_qrcode_set_size(qr, MIN(HUB75_SCREEN_WIDTH, HUB75_SCREEN_HEIGHT));
     // Set data
     const char * data = "Hello World, Hello World";
     lv_result_t res = lv_qrcode_update(qr, data, strlen(data));
 */
 
 
-    bouncingBalls = new BouncingBalls(15, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    fireEffect = new FireEffect(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    bouncingBalls = new BouncingBalls(15, HUB75_SCREEN_WIDTH, HUB75_SCREEN_HEIGHT);
+    fireEffect = new FireEffect(HUB75_SCREEN_WIDTH, HUB75_SCREEN_HEIGHT);
     imageAnimation = new ImageAnimation(64, 64);
-    colourCheck = new ColourCheck(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    colourCheck = new ColourCheck(HUB75_SCREEN_WIDTH, HUB75_SCREEN_HEIGHT);
 
 
     add_repeating_timer_ms(15000, skip_to_next_demo, NULL, &timer);

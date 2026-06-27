@@ -2,6 +2,7 @@
 
 #include "pico/stdlib.h"
 #include <pico/time.h>
+#include <pico/multicore.h>
 
 #include "hardware/clocks.h"
 
@@ -36,7 +37,7 @@ void core1_entry()
     flash_safe_execute_core_init();
 
 #if defined(HUB75_SUPPORT)
-    create_hub75_driver(DISPLAY_WIDTH, DISPLAY_HEIGHT, PANEL_TYPE, INVERTED_STB);
+    create_hub75_driver();
     start_hub75_driver();
 #endif
 
@@ -74,20 +75,8 @@ int main()
     // Enable flash lockout possibilities for FOTA on each core!
     flash_safe_execute_core_init();
 
-#if HUB75_MULTICORE == true
-    // Run hub75 driver on core1
     multicore_reset_core1();             // Reset core 1
     multicore_launch_core1(core1_entry); // Launch core 1 entry function - the Hub75 driver is doing its job there
-#else
-    // Run hub75 on core0 - the Hub75 driver is doing its job here
-    create_hub75_driver(DISPLAY_WIDTH, DISPLAY_HEIGHT, PANEL_TYPE, INVERTED_STB);
-    start_hub75_driver();
-#if defined(UDP_VIDEO_SERVER_PORT)
-    network_init();
-#endif
-
-#endif
-
 
 
 #if defined(LVGL_SUPPORT)

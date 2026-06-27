@@ -106,7 +106,7 @@ public:
         lv_style_set_text_color(&scrolling_label_style, lv_color_make(200, 100, 120));
         lv_obj_t *label2 = lv_label_create(screen);
         lv_label_set_long_mode(label2, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR); /*Circular scroll*/
-        lv_obj_set_width(label2, 64);
+        lv_obj_set_width(label2, width);
 
         lv_label_set_text(label2, "This is a circulating scrolling text. ");
         lv_obj_align(label2, LV_ALIGN_CENTER, 0, 20);
