@@ -1,6 +1,6 @@
 # Generated Cmake Pico project file
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.14)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -54,7 +54,7 @@ set(PRIVATE_SIGNING_KEY "${CMAKE_SOURCE_DIR}/keys/private.pem")
 set(HUB75_SUPPORT true) # Enable the HUB75 library
 set(LVGL_SUPPORT true)  # Enable LVGL support
 
-add_subdirectory(libraries)
+# Add general library directories. HUB75 and LVGL will be added in the respective blocks
 add_subdirectory(protos)
 add_subdirectory(util)
 
@@ -69,6 +69,8 @@ pico_enable_stdio_usb(${PROJECT_NAME} 1)
 
 
 if(HUB75_SUPPORT)
+    add_subdirectory(libraries/hub75)
+
     # No need to modify preprocessor defines in hub75.cpp - instead set their values here.
     #
     # Example:
@@ -150,6 +152,13 @@ endif()
 
 
 if(LVGL_SUPPORT)
+    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+    set(CONFIG_LV_BUILD_EXAMPLES false)
+    set(CONFIG_LV_BUILD_DEMOS false)
+    set(CONFIG_LV_USE_THORVG_INTERNAL false)
+
+    add_subdirectory(libraries/lvgl)
+
     target_compile_definitions(${PROJECT_NAME} PUBLIC
         LVGL_SUPPORT=true
         LV_CONF_PATH="${CMAKE_SOURCE_DIR}/lv_conf.h"

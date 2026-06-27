@@ -1,6 +1,0 @@
-if(HUB75_SUPPORT)
-    add_subdirectory(hub75)
-endif()
-if(LVGL_SUPPORT)
-    add_subdirectory(lvgl)
-endif()
