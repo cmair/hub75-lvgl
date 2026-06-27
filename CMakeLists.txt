@@ -43,6 +43,7 @@ pico_sdk_init()
 add_executable(${PROJECT_NAME}
     src/demo.cpp
     src/protobuf.cpp
+    src/temperature.cpp
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -187,6 +188,7 @@ target_link_libraries(${PROJECT_NAME}
         pico_sha256
         boot_uf2_headers
         hardware_vreg
+        hardware_adc
 )
 
 # Add the standard include files to the build

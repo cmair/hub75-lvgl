@@ -7,6 +7,7 @@
 #include "hardware/clocks.h"
 
 #include "protobuf.hpp"
+#include "temperature.hpp"
 
 #if defined(HUB75_SUPPORT)
 #include "hub75.hpp"
@@ -59,6 +60,12 @@ void core1_entry()
 }
 
 
+bool housekeeping_timer_callback(__unused struct repeating_timer *rt)
+{
+    temperature_read_mcu();
+    return true;
+}
+
 int main()
 {
     // Set system clock to 234MHz - this is the highest supported frequency for my panels
@@ -80,6 +87,7 @@ int main()
     multicore_reset_core1();             // Reset core 1
     multicore_launch_core1(core1_entry); // Launch core 1 entry function - the Hub75 driver is doing its job there
 
+    temperature_init();
 
 #if defined(LVGL_SUPPORT)
     lvgl_init();
