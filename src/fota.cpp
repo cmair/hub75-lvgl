@@ -6,34 +6,26 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <cstdio>
 
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
 #include "pico/sha256.h"
 #include "pico/bootrom.h"
-#include "pico/multicore.h"
 #include "boot/picobin.h"
 #include "boot/picoboot.h"
 #include "boot/uf2.h"
 
-#include "lwip/pbuf.h"
-#include "lwip/tcp.h"
-
-#define TCP_PORT 4242
-//#define DEBUG_printf(...) printf(__VA_ARGS__)
-#define DEBUG_printf(...)
-#define BUF_SIZE 2048
-#define POLL_TIME_S 5
+#include "fota.hpp"
 
 #define FLASH_SECTOR_ERASE_SIZE 4096u
 
-typedef struct TCP_UPDATE_SERVER_T_ {
-    struct tcp_pcb *server_pcb;
-    struct tcp_pcb *client_pcb;
+typedef struct uf2_block uf2_block_t;
+
+typedef struct FOTA_STATE_T_ {
+    bool started;
     bool complete;
     __attribute__((aligned(4))) uint8_t buffer_sent[SHA256_RESULT_BYTES];
-    __attribute__((aligned(4))) uint8_t buffer_recv[BUF_SIZE];
-    int sent_len;
+    __attribute__((aligned(4))) uint8_t buffer_recv[FOTA_BUF_SIZE];
     int recv_len;
     int num_blocks;
     int blocks_done;
@@ -42,252 +34,143 @@ typedef struct TCP_UPDATE_SERVER_T_ {
     int32_t write_offset;
     uint32_t write_size;
     uint32_t highest_erased_sector;
-} TCP_UPDATE_SERVER_T;
+} FOTA_STATE_T;
 
-typedef struct uf2_block uf2_block_t;
+static FOTA_STATE_T state;
+static __attribute__((aligned(4))) uint8_t workarea[FLASH_SECTOR_ERASE_SIZE];
 
-static TCP_UPDATE_SERVER_T state;
+static fota_send_cb_t fota_send_cb = NULL;
+static fota_complete_cb_t fota_complete_cb = NULL;
 
-static __attribute__((aligned(4))) uint8_t workarea[4 * 1024];
 
-static err_t tcp_update_server_close(void *arg) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    err_t err = ERR_OK;
-    if (state->client_pcb != NULL) {
-        tcp_arg(state->client_pcb, NULL);
-        tcp_poll(state->client_pcb, NULL, 0);
-        tcp_sent(state->client_pcb, NULL);
-        tcp_recv(state->client_pcb, NULL);
-        tcp_err(state->client_pcb, NULL);
-        err = tcp_close(state->client_pcb);
-        if (err != ERR_OK) {
-            DEBUG_printf("close failed %d, calling abort\n", err);
-            tcp_abort(state->client_pcb);
-            err = ERR_ABRT;
-        }
-        state->client_pcb = NULL;
-    }
-    if (state->server_pcb) {
-        tcp_arg(state->server_pcb, NULL);
-        tcp_close(state->server_pcb);
-        state->server_pcb = NULL;
-    }
-    return err;
+int fota_init(void) {
+    memset(&state, 0, sizeof(state));
+    state.recv_len = 0;
+    state.num_blocks = 0;
+    state.blocks_done = 0;
+    state.highest_erased_sector = 0;
+    state.started = false;
+    state.complete = false;
+    return 0;
 }
 
-static err_t tcp_update_server_result(void *arg, int status) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    if (status == 0) {
-        DEBUG_printf("test success\n");
-    } else {
-        DEBUG_printf("test failed %d\n", status);
+
+int fota_process_data(const uint8_t *data, size_t len) {
+    if (state.complete) {
+        printf("FOTA already complete!");
+        return -1;
     }
-    state->complete = true;
-    return tcp_update_server_close(arg);
-}
+    size_t off = 0;
+    while (off < len) {
+        size_t to_copy = (len - off) < (size_t)(FOTA_BUF_SIZE - state.recv_len) ? (len - off) : (size_t)(FOTA_BUF_SIZE - state.recv_len);
+        memcpy(state.buffer_recv + state.recv_len, data + off, to_copy);
+        state.recv_len += to_copy;
+        off += to_copy;
 
-static err_t tcp_update_server_sent(void *arg, struct tcp_pcb *tpcb, u16_t len) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    DEBUG_printf("tcp_update_server_sent %u\n", len);
-    state->sent_len += len;
+        if (state.recv_len == FOTA_BUF_SIZE) {
+            // process buffer
+            for (int i = 0; i < FOTA_BUF_SIZE / sizeof(uf2_block_t); i++) {
+                uf2_block_t* block = (uf2_block_t*)(state.buffer_recv + i * sizeof(uf2_block_t));
 
-    if (state->sent_len >= SHA256_RESULT_BYTES) {
+                if (state.num_blocks == 0) {
+                    state.num_blocks = block->num_blocks;
+                    state.family_id = block->file_size;
 
-        // We should get the data back from the client
-        state->recv_len = 0;
-        DEBUG_printf("Waiting for buffer from client\n");
-    }
+                    resident_partition_t uf2_target_partition;
+                    rom_flash_flush_cache();
+                    int ret = rom_get_uf2_target_partition(workarea, sizeof(workarea), state.family_id, &uf2_target_partition);
+                    if (ret < 0) {
+                        printf("rom_get_uf2_target_partition error: %d", ret);
+                        return -1;
+                    }
+                    printf("Code Target partition is %lx %lx\n", uf2_target_partition.permissions_and_location, uf2_target_partition.permissions_and_flags);
 
-    return ERR_OK;
-}
+                    uint16_t first_sector_number = (uf2_target_partition.permissions_and_location & PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_LSB;
+                    uint16_t last_sector_number = (uf2_target_partition.permissions_and_location & PICOBIN_PARTITION_LOCATION_LAST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
+                    uint32_t code_start_addr = first_sector_number * 0x1000;
+                    uint32_t code_end_addr = (last_sector_number + 1) * 0x1000;
+                    uint32_t code_size = code_end_addr - code_start_addr;
+                    printf("Start %lx, End %lx, Size %lx\n", code_start_addr, code_end_addr, code_size);
 
-err_t tcp_update_server_send_data(void *arg, struct tcp_pcb *tpcb)
-{
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
+                    state.flash_update = code_start_addr + XIP_BASE;
+                    state.write_offset = code_start_addr + XIP_BASE - block->target_addr;
+                    state.write_size = code_size;
 
-    state->sent_len = 0;
-    DEBUG_printf("Writing %ld bytes to client\n", SHA256_RESULT_BYTES);
-    // this method is callback from lwIP, so cyw43_arch_lwip_begin is not required, however you
-    // can use this method to cause an assertion in debug mode, if this method is called when
-    // cyw43_arch_lwip_begin IS needed
-    cyw43_arch_lwip_check();
-    err_t err = tcp_write(tpcb, state->buffer_sent, SHA256_RESULT_BYTES, TCP_WRITE_FLAG_COPY);
-    if (err != ERR_OK) {
-        DEBUG_printf("Failed to write data %d\n", err);
-        return tcp_update_server_result(arg, -1);
-    }
-    return ERR_OK;
-}
+                    if ((uint32_t)(block->target_addr / FLASH_SECTOR_ERASE_SIZE) > state.highest_erased_sector) {
+                        struct cflash_flags flags;
+                        flags.flags =
+                            (CFLASH_OP_VALUE_ERASE << CFLASH_OP_LSB) |
+                            (CFLASH_SECLEVEL_VALUE_SECURE << CFLASH_SECLEVEL_LSB) |
+                            (CFLASH_ASPACE_VALUE_STORAGE << CFLASH_ASPACE_LSB);
+                        int ret = rom_flash_op(flags,
+                            block->target_addr + state.write_offset,
+                            code_size, NULL);
+                        printf("rom_flash_op returned %d\n", ret);
+                        state.highest_erased_sector = block->target_addr / FLASH_SECTOR_ERASE_SIZE;
+                    }
 
-err_t tcp_update_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    if (!p) {
-        return tcp_update_server_result(arg, -1);
-    }
-    // this method is callback from lwIP, so cyw43_arch_lwip_begin is not required, however you
-    // can use this method to cause an assertion in debug mode, if this method is called when
-    // cyw43_arch_lwip_begin IS needed
-    cyw43_arch_lwip_check();
-    if (p->tot_len > 0) {
-        DEBUG_printf("tcp_update_server_recv %d/%d err %d\n", p->tot_len, state->recv_len, err);
+                }
 
-        // Receive the buffer
-        const uint16_t buffer_left = BUF_SIZE - state->recv_len;
-        state->recv_len += pbuf_copy_partial(p, state->buffer_recv + state->recv_len,
-                                             p->tot_len > buffer_left ? buffer_left : p->tot_len, 0);
-        tcp_recved(tpcb, p->tot_len);
-    }
-    pbuf_free(p);
+                if (state.blocks_done != block->block_no) {
+                    printf("block number mismatch - expected %d, got %d\n", state.blocks_done, block->block_no);
+                    state.complete = true;
+                    if (fota_complete_cb) {
+                        fota_complete_cb(-1);
+                    } 
+                    return -1;
+                }
+                if (state.family_id != block->file_size) {
+                    printf("family id mismatch\n");
+                    state.complete = true;
+                    if (fota_complete_cb) {
+                        fota_complete_cb(-1);
+                    } 
+                    return -1;
+                }
 
-    // Have we have received the whole buffer
-    if (state->recv_len == BUF_SIZE) {
-
-        for (int i=0; i < BUF_SIZE/sizeof(uf2_block_t); i++) {
-            // check it matches
-            uf2_block_t* block;
-            block = (uf2_block_t*)(state->buffer_recv + i * sizeof(uf2_block_t));
-
-            if (state->num_blocks == 0) {
-                state->num_blocks = block->num_blocks;
-                state->family_id = block->file_size; // or familyID;
-
-                resident_partition_t uf2_target_partition;
-                rom_flash_flush_cache();
-                rom_get_uf2_target_partition(workarea, sizeof(workarea), state->family_id, &uf2_target_partition);
-                printf("Code Target partition is %lx %lx\n", uf2_target_partition.permissions_and_location, uf2_target_partition.permissions_and_flags);
-
-                uint16_t first_sector_number = (uf2_target_partition.permissions_and_location & PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_LSB;
-                uint16_t last_sector_number = (uf2_target_partition.permissions_and_location & PICOBIN_PARTITION_LOCATION_LAST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
-                uint32_t code_start_addr = first_sector_number * 0x1000;
-                uint32_t code_end_addr = (last_sector_number + 1) * 0x1000;
-                uint32_t code_size = code_end_addr - code_start_addr;
-                printf("Start %lx, End %lx, Size %lx\n", code_start_addr, code_end_addr, code_size);
-
-                state->flash_update = code_start_addr + XIP_BASE;
-                state->write_offset = code_start_addr + XIP_BASE - block->target_addr;
-                state->write_size = code_size;
-                DEBUG_printf("Write Offset %lx, Size %lx\n", state->write_offset, state->write_size);
-            }
-
-            if (state->blocks_done != block->block_no) {
-                DEBUG_printf("block number mismatch - expected %d, got %d\n", state->blocks_done, block->block_no);
-                return tcp_update_server_result(arg, -1);
-            }
-            if (state->family_id != block->file_size) {
-                DEBUG_printf("family id mismatch\n");
-                return tcp_update_server_result(arg, -1);
-            }
-            DEBUG_printf("tcp_update_server_recv buffer ok\n");
-
-            // Write to flash
-            struct cflash_flags flags;
-            int8_t ret;
-            (void)ret;
-            if (block->target_addr / FLASH_SECTOR_ERASE_SIZE > state->highest_erased_sector) {
+                struct cflash_flags flags;
+                int8_t ret;
                 flags.flags =
-                    (CFLASH_OP_VALUE_ERASE << CFLASH_OP_LSB) | 
+                    (CFLASH_OP_VALUE_PROGRAM << CFLASH_OP_LSB) |
                     (CFLASH_SECLEVEL_VALUE_SECURE << CFLASH_SECLEVEL_LSB) |
                     (CFLASH_ASPACE_VALUE_STORAGE << CFLASH_ASPACE_LSB);
                 ret = rom_flash_op(flags,
-                    block->target_addr + state->write_offset,
-                    FLASH_SECTOR_ERASE_SIZE, NULL);
-                state->highest_erased_sector = block->target_addr / FLASH_SECTOR_ERASE_SIZE;
-                DEBUG_printf("Checked Erase Returned %d, start %x, size %x, highest erased %x\n", ret, block->target_addr + state->write_offset, FLASH_SECTOR_ERASE_SIZE, state->highest_erased_sector);
+                    block->target_addr + state.write_offset,
+                    256, (uint8_t*)block->data);
+
+                state.blocks_done++;
+                if (state.blocks_done >= state.num_blocks) {
+                    state.complete = true;
+                    if (fota_complete_cb) {
+                        fota_complete_cb(0);
+                    }
+                    // do not send sha for final block (client expects no reply on final)
+                    state.recv_len = 0;
+                    return 0;
+                }
             }
-            flags.flags =
-                (CFLASH_OP_VALUE_PROGRAM << CFLASH_OP_LSB) | 
-                (CFLASH_SECLEVEL_VALUE_SECURE << CFLASH_SECLEVEL_LSB) |
-                (CFLASH_ASPACE_VALUE_STORAGE << CFLASH_ASPACE_LSB);
-            ret = rom_flash_op(flags,
-                block->target_addr + state->write_offset,
-                256, (uint8_t*)block->data);
-            DEBUG_printf("Checked Program Returned %d, start %x, size %x\n", ret, block->target_addr + state->write_offset, 256);
 
-            // Download complete?
-            state->blocks_done++;
-            if (state->blocks_done >= state->num_blocks) {
-                tcp_update_server_result(arg, 0);
-                return ERR_OK;
+            // Hash the received data and send via callback
+            pico_sha256_state_t sha_state;
+            int rc = pico_sha256_start_blocking(&sha_state, SHA256_BIG_ENDIAN, true);
+            hard_assert(rc == PICO_OK);
+            pico_sha256_update_blocking(&sha_state, (const uint8_t*)state.buffer_recv, sizeof(state.buffer_recv));
+            pico_sha256_finish(&sha_state, (sha256_result_t*)state.buffer_sent);
+
+            if (fota_send_cb) {
+                fota_send_cb(state.buffer_sent, SHA256_RESULT_BYTES);
             }
+
+            state.recv_len = 0;
         }
-
-        // Hash the received data
-        pico_sha256_state_t sha_state;
-        int rc = pico_sha256_start_blocking(&sha_state, SHA256_BIG_ENDIAN, true); // using some DMA system resources
-        hard_assert(rc == PICO_OK);
-        pico_sha256_update_blocking(&sha_state, (const uint8_t*)state->buffer_recv, sizeof(state->buffer_recv));
-
-        // Get the result of the sha256 calculation
-        sha256_result_t* result;
-        result = (sha256_result_t*)state->buffer_sent;
-        pico_sha256_finish(&sha_state, result);
-
-        // Send another buffer
-        return tcp_update_server_send_data(arg, state->client_pcb);
     }
-    return ERR_OK;
+    return 0;
 }
 
-static err_t tcp_update_server_poll(void *arg, struct tcp_pcb *tpcb) {
-    DEBUG_printf("tcp_update_server_poll_fn\n");
-    return tcp_update_server_result(arg, -1); // no response is an error?
-}
 
-static void tcp_update_server_err(void *arg, err_t err) {
-    if (err != ERR_ABRT) {
-        DEBUG_printf("tcp_client_err_fn %d\n", err);
-        tcp_update_server_result(arg, err);
-    }
-}
-
-static err_t tcp_update_server_accept(void *arg, struct tcp_pcb *client_pcb, err_t err) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    if (err != ERR_OK || client_pcb == NULL) {
-        DEBUG_printf("Failure in accept\n");
-        tcp_update_server_result(arg, err);
-        return ERR_VAL;
-    }
-    DEBUG_printf("Client connected\n");
-
-    state->client_pcb = client_pcb;
-    tcp_arg(client_pcb, state);
-    tcp_sent(client_pcb, tcp_update_server_sent);
-    tcp_recv(client_pcb, tcp_update_server_recv);
-    tcp_poll(client_pcb, tcp_update_server_poll, POLL_TIME_S * 2);
-    tcp_err(client_pcb, tcp_update_server_err);
-
-    return ERR_OK;
-}
-
-static bool tcp_update_server_open(void *arg) {
-    TCP_UPDATE_SERVER_T *state = (TCP_UPDATE_SERVER_T*)arg;
-    printf("Starting server at %s on port %u\n", ip4addr_ntoa(netif_ip4_addr(netif_list)), TCP_PORT);
-
-    struct tcp_pcb *pcb = tcp_new_ip_type(IPADDR_TYPE_ANY);
-    if (!pcb) {
-        DEBUG_printf("failed to create pcb\n");
-        return false;
-    }
-
-    err_t err = tcp_bind(pcb, NULL, TCP_PORT);
-    if (err) {
-        DEBUG_printf("failed to bind to port %u\n", TCP_PORT);
-        return false;
-    }
-
-    state->server_pcb = tcp_listen_with_backlog(pcb, 1);
-    if (!state->server_pcb) {
-        DEBUG_printf("failed to listen\n");
-        if (pcb) {
-            tcp_close(pcb);
-        }
-        return false;
-    }
-
-    tcp_arg(state->server_pcb, state);
-    tcp_accept(state->server_pcb, tcp_update_server_accept);
-
-    return true;
+void fota_set_callbacks(fota_complete_cb_t complete_cb, fota_send_cb_t send_cb){
+    fota_complete_cb = complete_cb;
+    fota_send_cb = send_cb;
 }
 
 
@@ -308,20 +191,12 @@ static bool tcp_update_server_open(void *arg) {
 }
 
 
-void fota_init_network(void) {
-    if (!tcp_update_server_open(&state)) {
-        tcp_update_server_result(&state, -1);
-        return;
-    }
-}
-
 bool fota_is_complete(void) {
     return state.complete;
 }
 
+
 void fota_reboot(void) {
-    // stopping cyw43 within a network callback will panic.
-    cyw43_arch_deinit();
     int ret = rom_reboot(REBOOT2_FLAG_REBOOT_TYPE_FLASH_UPDATE, 1000, state.flash_update, 0);
     printf("Done - rebooting for a flash update boot %d\n", ret);
     sleep_ms(2000);

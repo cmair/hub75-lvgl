@@ -42,6 +42,7 @@ pico_sdk_init()
 # Add executable. Default name is the project name
 add_executable(${PROJECT_NAME}
     src/demo.cpp
+    src/protobuf.cpp
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

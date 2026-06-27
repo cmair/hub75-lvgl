@@ -37,6 +37,7 @@ static uint8_t buf1[HUB75_SCREEN_WIDTH * HUB75_SCREEN_HEIGHT * BYTES_PER_PIXEL];
 static lv_display_t *display1; ///< LVGL display handle
 
 static bool load_anim = true; ///< Flag to trigger animation setup
+int lvgl_demo = 0;
 
 BouncingBalls *bouncingBalls;
 FireEffect *fireEffect;
@@ -241,7 +242,12 @@ void lvgl_init()
 }
 
 
-void lvgl_animate(int lvgl_demo)
+void lvgl_set_demo(int demo)
+{
+    lvgl_demo = demo;
+}
+
+void lvgl_animate(void)
 {
     switch (lvgl_demo)
     {

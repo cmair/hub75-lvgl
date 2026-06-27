@@ -6,6 +6,8 @@
 
 #include "hardware/clocks.h"
 
+#include "protobuf.hpp"
+
 #if defined(HUB75_SUPPORT)
 #include "hub75.hpp"
 #endif
@@ -98,16 +100,16 @@ int main()
     setIntensity(intensity);
 #endif
 
-    int demo_selection = 1;
-
+    absolute_time_t time_start;
     while (true)
     {
+        time_start = get_absolute_time();
+        protobuf_execute_pending_commands();
 #if defined(LVGL_SUPPORT)
-        lvgl_animate(demo_selection);
+        lvgl_animate();
 #endif
-        #if defined(UDP_VIDEO_SERVER_PORT)
-        demo_selection = network_service();
-        #endif
-        sleep_ms(ms); // hz updates per second - the HUB75 driver is running independently
+        protobuf_execute_pending_commands();
+        int64_t duration = absolute_time_diff_us(time_start, get_absolute_time());
+        sleep_us((ms*1000) - duration); // hz updates per second - the HUB75 driver is running independently
     }
 }
