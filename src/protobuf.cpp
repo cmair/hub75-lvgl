@@ -3,7 +3,10 @@
 #include <atomic>
 #include <stdio.h>
 
+#include <pico/sync.h>
+
 #include "nanopb/pb_decode.h"
+#include "nanopb/pb_encode.h"
 #include "nanopb/pb_common.h"
 #include "panel.pb.h"
 
@@ -32,16 +35,24 @@ static std::atomic<bool> cmd_demo_pending(false);
 static std::atomic<int> demo_selection(0);
 #endif
 
-static std::atomic<size_t> fota_pending(0);
-static uint8_t fota_data[1024];
+static std::atomic<bool> fota_pending(false);
+static struct fota_message fota_message;
 
-void process_protobuf_message(const uint8_t *buf, size_t len)
+static semaphore_t sem_panelCommand;
+static PanelCommand msg = PanelCommand_init_zero;
+
+void process_protobuf_message(uint8_t *buf, size_t len, const struct proto_message_peer *proto_msg_source)
 {
-    PanelCommand msg = PanelCommand_init_zero;
+    if (!sem_acquire_timeout_ms(&sem_panelCommand, 10)) {
+        printf("Error aquiring semaphore");
+        return;
+    }
+    msg = PanelCommand_init_zero;
     pb_decode_ctx_t decode_ctx;
     pb_init_decode_ctx_for_buffer(&decode_ctx, buf, len);
     if (!pb_decode(&decode_ctx, PanelCommand_fields, &msg)) {
         printf("pb_decode failed: %s\n", PB_GET_ERROR(&decode_ctx));
+        sem_release(&sem_panelCommand);
         return;
     }
 
@@ -89,21 +100,44 @@ void process_protobuf_message(const uint8_t *buf, size_t len)
         #endif
         case PanelCommand_firmware_upload_tag:
             {
+                //fota_pending.store(false);
                 pb_bytes_array_t *pbfota = (pb_bytes_array_t *)&msg.command.firmware_upload.firmware_data;
-                memcpy(&fota_data, pbfota->bytes, pbfota->size);
-                fota_pending.store(pbfota->size);
+                memcpy(&fota_message.data, pbfota->bytes, pbfota->size);
+                fota_message.size = pbfota->size;
+                memcpy(&fota_message.source, proto_msg_source, sizeof(*proto_msg_source));
+                fota_pending.store(true);
             }
             break;
         default:
             printf("Decoded command: Unknown (tag %d)\n", msg.which_command);
             return;
     }
+    sem_release(&sem_panelCommand);
 }
 
 
-void protobuf_firmware_block_confirmation(const uint8_t *buf, size_t len)
+int protobuf_firmware_block_confirmation(uint8_t *dst, size_t dst_len, const uint8_t *payload, size_t len)
 {
+    static pb_encode_ctx_t encode_ctx;
 
+    if (!sem_acquire_timeout_ms(&sem_panelCommand, 10)) {
+        printf("Error aquiring semaphore 2");
+        return 0;
+    }
+    msg = PanelCommand_init_zero;
+    pb_init_encode_ctx_for_buffer(&encode_ctx, dst, 40);
+
+    msg.which_command = PanelCommand_firmware_block_confirmation_tag;
+    msg.command.firmware_block_confirmation.block_hash.size = len;
+    memcpy(&msg.command.firmware_block_confirmation.block_hash.bytes, payload, len);
+    int status = pb_encode(&encode_ctx, PanelCommand_fields, &msg);
+    sem_release(&sem_panelCommand);
+
+    if (!status) {
+        printf("Encodig failed (%d): %s\n", status, PB_GET_ERROR(&encode_ctx));
+        return -1;
+    }
+    return encode_ctx.bytes_written;
 }
 
 
@@ -132,8 +166,14 @@ int protobuf_execute_pending_commands(void)
         #endif
     }
     #endif
-    if (size_t size = fota_pending.exchange(0)) {
-        fota_process_data(fota_data, size);
+    if (fota_pending.exchange(false)) {
+        fota_process_data(fota_message.data, fota_message.size, &fota_message.source);
     }
     return 0;
+}
+
+void protobuf_init(void)
+{
+    sem_init(&sem_panelCommand, 1, 1);
+    printf("Semaphore initialized");
 }

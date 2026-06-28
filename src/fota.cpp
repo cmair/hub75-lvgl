@@ -51,11 +51,12 @@ int fota_init(void) {
     state.highest_erased_sector = 0;
     state.started = false;
     state.complete = false;
+    printf("FOTA initialized\n");
     return 0;
 }
 
 
-int fota_process_data(const uint8_t *data, size_t len) {
+int fota_process_data(uint8_t *data, size_t len, struct proto_message_peer *src) {
     if (state.complete) {
         printf("FOTA already complete!");
         return -1;
@@ -104,7 +105,7 @@ int fota_process_data(const uint8_t *data, size_t len) {
                             (CFLASH_ASPACE_VALUE_STORAGE << CFLASH_ASPACE_LSB);
                         int ret = rom_flash_op(flags,
                             block->target_addr + state.write_offset,
-                            code_size, NULL);
+                            FLASH_SECTOR_ERASE_SIZE, NULL);
                         printf("rom_flash_op returned %d\n", ret);
                         state.highest_erased_sector = block->target_addr / FLASH_SECTOR_ERASE_SIZE;
                     }
@@ -113,16 +114,24 @@ int fota_process_data(const uint8_t *data, size_t len) {
 
                 if (state.blocks_done != block->block_no) {
                     printf("block number mismatch - expected %d, got %d\n", state.blocks_done, block->block_no);
-                    state.complete = true;
-                    if (fota_complete_cb) {
-                        fota_complete_cb(-1);
-                    } 
-                    return -1;
+                    if (state.blocks_done > block->block_no) {
+                        i++;
+                        continue;
+                    } else {
+                        printf("block number mismatch - expected %d, got %d\n", state.blocks_done, block->block_no);
+                        state.complete = true;
+                        if (fota_complete_cb) {
+                            printf("Fota complete cb -1(1)\n");
+                            fota_complete_cb(-1);
+                        } 
+                        return -1;
+                    }
                 }
                 if (state.family_id != block->file_size) {
                     printf("family id mismatch\n");
                     state.complete = true;
                     if (fota_complete_cb) {
+                        printf("Fota complete cb -1(2)\n");
                         fota_complete_cb(-1);
                     } 
                     return -1;
@@ -142,6 +151,7 @@ int fota_process_data(const uint8_t *data, size_t len) {
                 if (state.blocks_done >= state.num_blocks) {
                     state.complete = true;
                     if (fota_complete_cb) {
+                        printf("Fota complete cb 0\n");
                         fota_complete_cb(0);
                     }
                     // do not send sha for final block (client expects no reply on final)
@@ -158,7 +168,14 @@ int fota_process_data(const uint8_t *data, size_t len) {
             pico_sha256_finish(&sha_state, (sha256_result_t*)state.buffer_sent);
 
             if (fota_send_cb) {
-                fota_send_cb(state.buffer_sent, SHA256_RESULT_BYTES);
+                int length = protobuf_firmware_block_confirmation(data, len, state.buffer_sent, SHA256_RESULT_BYTES);
+                if (length > 0) {
+                    fota_send_cb(data, length, src);
+                } else {
+                    printf("protobuf encoding failed!\n");
+                    fota_init();
+                    return -1;
+                }
             }
 
             state.recv_len = 0;

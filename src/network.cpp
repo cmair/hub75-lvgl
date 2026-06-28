@@ -21,9 +21,8 @@
 #endif
 
 static struct udp_pcb *udp_listener = nullptr;
-
 static uint8_t receive_buffer[BUFSIZE];
-
+static struct proto_message_peer source;
 
 static void udp_recv_cb(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
@@ -47,9 +46,43 @@ static void udp_recv_cb(void *arg, struct udp_pcb *upcb, struct pbuf *p, const i
     pbuf_copy_partial(p, receive_buffer, total, 0);
     pbuf_free(p);
 
-    process_protobuf_message(receive_buffer, total);
+    printf("Received packet of size %d\n", total);
+
+    source.source = UDP;
+    source.peer.addr = *addr;
+    source.peer.port = port;
+
+    process_protobuf_message(receive_buffer, total, &source);
 }
 
+
+static int udp_send_message(uint8_t *data, size_t size, const struct proto_message_peer *dst)
+{
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, size, PBUF_RAM);
+    if (p != NULL) {
+        memcpy(p->payload, data, size);
+        int err = udp_sendto(udp_listener, p, &(dst->peer.addr), UDP_VIDEO_SERVER_PORT);
+        if (err < 0){
+            printf("UDP send returned err %d\n", err);
+        }
+        pbuf_free(p);
+    } else {
+        printf("Could not allocate UDP send buffer of size %d\n", size);
+    }
+    return 0;
+}
+
+
+static void network_fota_complete_cb_impl(int status)
+{
+    if (status == 0) {
+        printf("FOTA completed. Rebooting...");
+        fota_reboot();
+    } else {
+        printf("FOTA reported an error. Aborting.");
+        fota_init();
+    }
+}
 
 void start_udp_server()
 {
@@ -71,6 +104,7 @@ void start_udp_server()
     // Set receiver callback
     udp_recv(udp_listener, udp_recv_cb, nullptr);
     printf("UDP server started on port %d\n", UDP_VIDEO_SERVER_PORT);
+    fota_set_callbacks(network_fota_complete_cb_impl, udp_send_message);
 }
 
 
@@ -99,7 +133,7 @@ void network_init()
         printf("WiFi failed to initialise\n");
     } else {
         printf("WiFi initialized!\n");
-        cyw43_wifi_pm(&cyw43_state, CYW43_DEFAULT_PM);
+        cyw43_wifi_pm(&cyw43_state, CYW43_NONE_PM);
         cyw43_arch_enable_sta_mode();
 
         // Register callback to be notified when DHCP assigns an IP

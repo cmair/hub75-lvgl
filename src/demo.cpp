@@ -54,8 +54,10 @@ void core1_entry()
     // Add your additional tasks for core1 here
     while (!fota_is_complete())
     {
+        protobuf_execute_pending_commands();
         sleep_ms(10);
     }
+    printf("FOTA is complete!");
     fota_reboot();
 }
 
@@ -89,6 +91,8 @@ int main()
 
     temperature_init();
 
+    protobuf_init();
+
 #if defined(LVGL_SUPPORT)
     lvgl_init();
 #endif
@@ -112,7 +116,6 @@ int main()
     while (true)
     {
         time_start = get_absolute_time();
-        protobuf_execute_pending_commands();
 #if defined(LVGL_SUPPORT)
         lvgl_animate();
 #endif

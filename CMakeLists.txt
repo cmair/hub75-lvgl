@@ -141,7 +141,7 @@ if(PICO_CYW43_SUPPORTED)
         pico_cyw43_arch_lwip_threadsafe_background
     )
 
-#    pico_use_wifi_firmware_partition(${PROJECT_NAME})
+    pico_use_wifi_firmware_partition(${PROJECT_NAME})
 
     if(DEFINED ENV{WIFI_SSID})
         target_compile_definitions(${PROJECT_NAME} PRIVATE WIFI_SSID="$ENV{WIFI_SSID}")

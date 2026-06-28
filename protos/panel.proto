@@ -21,7 +21,8 @@ message PanelCommand {
     SetMode set_mode = 2;
     SetImage set_image = 3;
     FirmwareUpload firmware_upload = 4;
-    SetBaseBrightness base_brightness = 5;
+    FirmwareBlockConfirmation firmware_block_confirmation = 5;
+    SetBaseBrightness base_brightness = 6;
   }
 }
 
@@ -38,15 +39,15 @@ message SetMode {
 // Command: Set display image (raw bitmap data)
 message SetImage {
   // Max 64KB image data - static allocation
-  bytes image_data = 1 [(nanopb).max_size = 65536];
+  bytes image_data = 1 [(nanopb).max_size = 18432];
 }
 
 message FirmwareUpload {
-  bytes firmware_data = 1 [(nanopb).max_size = 1024];
+  bytes firmware_data = 1 [(nanopb).max_size = 2048];
 }
 
 message FirmwareBlockConfirmation {
-  bytes block_hasb = 1 [(nanopb).max_size = 32];
+  bytes block_hash = 1 [(nanopb).max_size = 32];
 }
 
 message SetBaseBrightness {

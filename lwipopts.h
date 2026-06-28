@@ -21,16 +21,16 @@
 #endif
 #define MEM_ALIGNMENT               4
 #ifndef MEM_SIZE
-#define MEM_SIZE                    30000
+#define MEM_SIZE                    20000
 #endif
 #define MEMP_NUM_TCP_SEG            32
-#define MEMP_NUM_ARP_QUEUE          20
-#define PBUF_POOL_SIZE              64
+#define MEMP_NUM_ARP_QUEUE          10
+#define PBUF_POOL_SIZE              24
 #define IP_REASS_MAX_PBUFS          16
 #define LWIP_ARP                    1
 #define LWIP_ETHERNET               1
 #define LWIP_ICMP                   1
-#define LWIP_RAW                    1
+#define LWIP_RAW                    0
 #define TCP_WND                     (8 * TCP_MSS)
 #define TCP_MSS                     1460
 #define TCP_SND_BUF                 (8 * TCP_MSS)
@@ -47,7 +47,7 @@
 #define LWIP_CHKSUM_ALGORITHM       3
 #define LWIP_DHCP                   1
 #define LWIP_IPV4                   1
-#define LWIP_TCP                    1
+#define LWIP_TCP                    0
 #define LWIP_UDP                    1
 #define LWIP_DNS                    0
 #define LWIP_TCP_KEEPALIVE          1
