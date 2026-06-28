@@ -47,7 +47,9 @@ add_executable(${PROJECT_NAME}
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    # Nothing here yet. See further below for more library settings.
+    PICO_USE_STACK_GUARDS=1
+    PICO_STACK_SIZE=4096
+    # See further below for more library settings.
 )
 
 # Set a signing key for firmware updates
