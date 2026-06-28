@@ -100,7 +100,7 @@ int main()
     // The Hub75 driver is constantly running on core 1 with a frequency usually much higher than 200Hz.
     // CPU load (on core 1) is low due to DMA and PIO usage.
     // The animated examples are updated at 100Hz.
-    float hz = 100.0f;
+    float hz = 25.0f;
     float ms = 1000.0f / hz;
 
 #if defined(HUB75_SUPPORT)
@@ -121,6 +121,8 @@ int main()
 #endif
         protobuf_execute_pending_commands();
         int64_t duration = absolute_time_diff_us(time_start, get_absolute_time());
-        sleep_us((ms*1000) - duration); // hz updates per second - the HUB75 driver is running independently
+        if (duration > 0) {
+            sleep_us((ms*1000) - duration); // hz updates per second - the HUB75 driver is running independently
+        }
     }
 }
