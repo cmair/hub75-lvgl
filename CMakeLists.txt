@@ -25,7 +25,10 @@ endif()
 # ====================================================================================
 # As far as I know the Raspberry Pi Pico plugin for VSCode does not (yet) support bare RP2350 microcontrollers without a board.
 # To adapt the C-SDK for a standard Pico board configure this CMakeLists.txt file via the Raspberry Pi Pico plugin's "Switch Board" option.
-set(PICO_BOARD pico2_w CACHE STRING "Board type")
+set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards)
+
+set(PICO_BOARD "scoreboard_panel")
+#set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 # Uncomment the following two lines to compile for bare RP2350 without a board
 # set(PICO_PLATFORM rp2350)
